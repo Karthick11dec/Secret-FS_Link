@@ -12,102 +12,116 @@ dotenv.config();
 
 const mongoClient = mongodb.MongoClient;
 const objectId = mongodb.ObjectID;
+// const DB_URL = "mongodb://127.0.0.1:27017";
 const DB_URL = process.env.DBURL || "mongodb://127.0.0.1:27017";
-const port = process.env.PORT || 3000;
-const EMAIL = process.env.EMAIL;
-const PASSWORD = process.env.PASSWORD;
-const saltrounds = 10;
+const database = "secretMessage";
+const Docs = "data";
+
+const PORT = process.env.PORT || 5000;
 
 const transporter = nodemailer.createTransport({
     service: "gmail",
     auth: {
-        user: EMAIL,
-        pass: PASSWORD,
+        user: process.env.EMAIL,
+        pass: process.env.PASSWORD,
     }
 })
 
-const mailData = {
-    from: process.env.EMAIL,
-    subject: "S*CR*T M*SSAG*"
-}
-
-const mailMessage = (url) => {
-    return (
-        `<p>Hi this is Raavan from gaming World,<br />
-            you have a SECRET MESSAGE waiting for only you to open. <br />
-            <a href='${url}' target='_blank'>${url}</a><br />
-            Don't Tell It Top Anyone...
-         </p>`
-    );
-}
-
-router.get('/',async(req,res)=>{
-    res.send("secret message service")
+router.get('/', async (req, res) => {
+    res.send("secret message service");
 })
 
 router.post('/create-message', async (req, res) => {
     try {
         const client = await mongoClient.connect(DB_URL);
-        const db = client.db('secretMessage');
-        const salt = await bcrypt.genSalt(saltrounds);
+        const db = client.db(database);
+        const salt = await bcrypt.genSalt(10);
         const hash = await bcrypt.hash(req.body.password, salt);
         const data = {
-            key: req.body.randomKey,
             password: hash,
-            message: req.body.message
+            key: req.body.randomKey,
+            deletor: req.body.password,
+            message: req.body.message,
+            mail: req.body.targetMail
         }
-        await db.collection('secretMessage').insertOne(data);
-        const result = await db.collection('secretMessage').findOne({key: data.key});
-        const usrMailUrl = `${req.body.targetURL}?rs=${result._id}`;
-        mailData.to = req.body.targetMail;
-        mailData.html = mailMessage(usrMailUrl)
-        await transporter.sendMail(mailData);
-        res.status(200).json({message: "secret message is send. Don't forget yout secret key and password", result})
+        await db.collection(Docs).insertOne(data);
+        const result = await db.collection(Docs).findOne({ key: data.key });
+        // console.log(result);
+    //     //for receiver
+        let receiver = transporter.sendMail({
+            from: process.env.EMAIL,
+            to: req.body.targetMail,
+            subject: "S*CR*T M*SSAG*",
+            html: `<p>Hi this is ${process.env.EMAIL},<br /><br />
+        I have a SECRET MESSAGE for you <a href='${req.body.targetURL}?rs=${result._id}' target='_blank'>Click here.</a><br />
+        <p>Note : Don't share with Anyone...</p>
+     </p>`
+        });
+
+        //for sender
+       let sender = transporter.sendMail({
+            from: process.env.EMAIL,
+            to: process.env.EMAIL,
+            subject: "S*CR*T M*SSAG* ACK*",
+            html: `<p>This is from your <b>Secret message service</b> my Dear admin.<p>
+            <p>
+                <span>You only have the access to delete the specific message
+                    that you have already sent to <b>${result.mail}</b>.PFB,
+                </span>
+            </p>
+            <p>
+                <div>Note : Copy and past it on your admin panel to delete the message.</div>
+                <br></br>
+                <div><b>Secret key :</b><span> ${result.key}</span></div>
+                <div><b>Passcode :</b><span> ${result.deletor}</span></div>
+            </p>`
+        });
+        // console.log(result);
+        res.json({ message: "Ack of this message has been sent to your mail", sender , receiver });
+        client.close();
     } catch (error) {
         console.log(error);
-        res.sendStatus(500);
-    } finally {
-        client.close();
+        res.json({ message: "Entered mail is not exist.", error });
     }
 })
 
 router.get('/message-by-id/:id', async (req, res) => {
     try {
         const client = await mongoClient.connect(DB_URL);
-        const db = client.db('secretMessage');
-        const result = await db.collection('secretMessage').find({_id: objectId(req.params.id)}).project({password: 0, _id: 0, key: 0}).toArray();
-        res.status(200).json({message: "message have been fetched successfully", result})
+        const db = client.db(database);
+        const result = await db.collection(Docs)
+            .find({ _id: objectId(req.params.id) })
+            .project({ password: 0, _id: 0, key: 0 }).toArray();
+        res.status(200).json({ message: "message have been fetched successfully.", result });
+        client.close();
     } catch (error) {
         console.log(error);
         res.sendStatus(500);
-    } finally {
-        client.close();
     }
 })
 
 router.delete('/delete-message', async (req, res) => {
     try {
         const client = await mongoClient.connect(DB_URL);
-        const db = client.db('secretMessage');
-        const secret = await db.collection('secretMessage').findOne({key: req.body.secretKey});
-        if(secret){
+        const db = client.db(database);
+        const secret = await db.collection(Docs).findOne({ key: req.body.secretKey });
+        if (secret) {
             const compare = await bcrypt.compare(req.body.password, secret.password);
-            if (compare){
-                await db.collection('secretMessage').findOneAndDelete({key: req.body.secretKey});
-                res.status(200).json({message: "message has been deleted successfully"});
-            }else{
-                res.status(401).json({message: "incorrect password!"})
+            if (compare) {
+                await db.collection(Docs).findOneAndDelete({ key: req.body.secretKey });
+                res.status(200).json({ message: 'message has been deleted successfully.' });
+            } else {
+                res.status(401).json({ message: "incorrect password!" });
             }
-        }else{
-            res.status(404).json({message: "secret key not found!!!"})
+        } else {
+            res.status(404).json({ message: "secret key not found!!!" });
         }
+        client.close();
     } catch (error) {
         console.log(error);
         res.sendStatus(500);
-    } finally{
-        client.close()
     }
 })
 
 
-router.listen(port, () => console.log("::: Server is UP and running successfully :::"))
+router.listen(PORT, () => console.log(`::: Server is UP and running successfully ::: ${PORT}`))

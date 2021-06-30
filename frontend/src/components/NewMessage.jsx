@@ -24,7 +24,10 @@ const NewMessage = () => {
   }, [randomString, password, message, targetMail, rootUrl])
 
   const handleMessageSubmit = () => {
-    fetch('https://secret-message-back.herokuapp.com/create-message', {
+
+    setButtonHidden(true);
+    // http://localhost:5000/
+    fetch('https://secret-back.herokuapp.com/create-message', {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
@@ -37,16 +40,28 @@ const NewMessage = () => {
         targetURL: rootUrl
       })
     }).then((res) => res.json())
-      .then((res) => history.go(0));
+      .then((res) => {
+        if (res.sender) {
+          alert(res.message);
+          history.go(0);
+        }
+        else if (res.message === "Entered mail is not exist.") {
+          alert(res.message);
+        }
+      });
   }
 
   return (
     <div className="App container mt-4">
       <div>
         <h1 className="mt-2 mb-3 d-inline-block">SECRET MESSAGING APP</h1>
-        <button className="btn btn-danger float-right mt-3" onClick={() => {
+        <button 
+        className="btn btn-danger float-right mt-3"
+         onClick={() => {
           history.push('/delete')
-        }}>Delete A Message</button>
+        }}>
+          Delete A Message
+          </button>
       </div>
       <label className="input-group" htmlFor="rs">
         Random string :{" "}
@@ -107,8 +122,12 @@ const NewMessage = () => {
         onChange={(e) => setRootUrl(e.target.value)}
         placeholder="Enter the url for message"
       />
-      <button type="button" disabled={buttonHidden} className="btn btn-primary mt-3 mb-3" onClick={handleMessageSubmit}>
-        Send
+      <button 
+      disabled={buttonHidden}
+       className="btn btn-success mt-3 mb-3" 
+       onClick={handleMessageSubmit}
+       >
+        Send A Message
       </button>
     </div>
   );
